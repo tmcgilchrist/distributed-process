@@ -1,8 +1,8 @@
-{-# LANGUAGE ExistentialQuantification  #-}
-{-# LANGUAGE ScopedTypeVariables        #-}
-{-# LANGUAGE DeriveDataTypeable         #-}
-{-# LANGUAGE DeriveGeneric              #-}
-{-# LANGUAGE TupleSections              #-}
+{-# LANGUAGE ExistentialQuantification #-}
+{-# LANGUAGE ScopedTypeVariables       #-}
+{-# LANGUAGE DeriveDataTypeable        #-}
+{-# LANGUAGE DeriveGeneric             #-}
+{-# LANGUAGE TupleSections             #-}
 
 module Main where
 
@@ -18,28 +18,21 @@ import Control.Distributed.Process.Extras.Time hiding (timeout)
 import Control.Distributed.Process.Extras.Timer
 import Control.Distributed.Process.FSM hiding (State, liftIO)
 import Control.Distributed.Process.FSM.Client (call, callTimeout)
-import Control.Distributed.Process.SysTest.Utils
 import Control.Monad (replicateM_, forM_)
-import Control.Rematch (equalTo)
 
-#if ! MIN_VERSION_base(4,6,0)
-import Prelude hiding (catch, drop)
-#else
 import Prelude hiding (drop, (*>))
-#endif
-
-import Test.Framework as TF (defaultMain, testGroup, Test)
-import Test.Framework.Providers.HUnit
 
 import Network.Transport.TCP
 import qualified Network.Transport as NT
 
--- import Control.Distributed.Process.Serializable (Serializable)
--- import Control.Monad (void)
 import Data.Binary (Binary)
 import Data.Maybe (fromJust)
 import Data.Typeable (Typeable)
 import GHC.Generics
+
+-- import Test.HUnit (assertEqual)
+import Test.Tasty (TestTree, defaultMain, testGroup)
+import Test.Tasty.HUnit (assertEqual, testCase)
 
 data State = On | Off deriving (Eq, Show, Typeable, Generic)
 instance Binary State where
@@ -154,7 +147,7 @@ republicationOfEvents = do
   send pid "hello"  -- triggers `nextEvent ()`
 
   res <- receiveChanTimeout (asTimeout $ seconds 5) rp :: Process (Maybe ())
-  res `shouldBe` equalTo (Just ())
+  liftIO $ assertEqual "received response" res (Just ())
 
   send pid Off
 
@@ -163,7 +156,7 @@ republicationOfEvents = do
   send pid On
 
   res' <- receiveChanTimeout (asTimeout $ seconds 20) rp :: Process (Maybe ())
-  res' `shouldBe` equalTo (Just ())
+  liftIO $ liftIO $ assertEqual "received response" res' (Just ())
 
   kill pid "thankyou byebye"
 
@@ -180,7 +173,7 @@ verifyOuterStateHandler = do
   () <- receiveChan rpOn
 
   resp <- callTimeout pid "hello there" (seconds 3):: Process (Maybe String)
-  resp `shouldBe` equalTo (Nothing :: Maybe String)
+  liftIO $ assertEqual "received response" resp (Nothing :: Maybe String)
 
   send pid Off
   send pid ()
@@ -188,7 +181,7 @@ verifyOuterStateHandler = do
   () <- receiveChan rpOff
 
   res <- call pid "hello" :: Process String
-  res `shouldBe` equalTo "hello"
+  liftIO $ assertEqual "received response" res "hello"
 
   kill pid "bye bye"
 
@@ -202,7 +195,7 @@ verifyMailboxHandling = do
 
   sleep $ seconds 5
   alive <- isProcessAlive pid
-  alive `shouldBe` equalTo True
+  liftIO $ assertEqual "received response"  alive True
 
   -- we should resume after the ExitNormal handler runs, and get back into the ()
   -- handler due to safeWait (*>) which adds a `safe` filter check for the given type
@@ -211,18 +204,18 @@ verifyMailboxHandling = do
   exit pid ExitShutdown
   monitor pid >>= waitForDown
   alive' <- isProcessAlive pid
-  alive' `shouldBe` equalTo False
+  liftIO $ assertEqual "received response"  alive' False
 
 verifyStopBehaviour :: Process ()
 verifyStopBehaviour = do
   pid <- start Off initCount switchFsm
   alive <- isProcessAlive pid
-  alive `shouldBe` equalTo True
+  liftIO $ assertEqual "received response"  alive True
 
   exit pid $ ExitOther "foobar"
   monitor pid >>= waitForDown
   alive' <- isProcessAlive pid
-  alive' `shouldBe` equalTo False
+  liftIO $ assertEqual "received response"  alive' False
 
 notSoQuirkyDefinitions :: Process ()
 notSoQuirkyDefinitions = do
@@ -235,64 +228,64 @@ quirkyOperators = do
 walkingAnFsmTree :: ProcessId -> Process ()
 walkingAnFsmTree pid = do
   mSt <- pushButton pid
-  mSt `shouldBe` equalTo On
+  liftIO $ assertEqual "received response"  mSt On
 
   mSt' <- pushButton pid
-  mSt' `shouldBe` equalTo Off
+  liftIO $ assertEqual "received response"  mSt' Off
 
   mCk <- check pid
-  mCk `shouldBe` equalTo (2 :: StateData)
+  liftIO $ assertEqual "received response"  mCk (2 :: StateData)
 
   -- verify that the process implementation turns exit signals into handlers...
   exit pid ExitNormal
   sleep $ seconds 6
   alive <- isProcessAlive pid
-  alive `shouldBe` equalTo True
+  liftIO $ assertEqual "received response"  alive True
 
   mCk2 <- check pid
-  mCk2 `shouldBe` equalTo (0 :: StateData)
+  liftIO $ assertEqual "received response"  mCk2 (0 :: StateData)
 
   mrst' <- pushButton pid
-  mrst' `shouldBe` equalTo On
+  liftIO $ assertEqual "received response"  mrst' On
 
   exit pid ExitShutdown
   monitor pid >>= waitForDown
   alive' <- isProcessAlive pid
-  alive' `shouldBe` equalTo False
+  liftIO $ assertEqual "received response"  alive' False
 
 myRemoteTable :: RemoteTable
 myRemoteTable =
   Control.Distributed.Process.Extras.__remoteTable $  initRemoteTable
 
-tests :: NT.Transport  -> IO [Test]
+tests :: NT.Transport -> IO TestTree
 tests transport = do
-  {- verboseCheckWithResult stdArgs -}
   localNode <- newLocalNode transport myRemoteTable
-  return [
-        testGroup "Language/DSL"
-        [
-          testCase "Traversing an FSM definition (operators)"
-           (runProcess localNode quirkyOperators)
-        , testCase "Traversing an FSM definition (functions)"
-           (runProcess localNode notSoQuirkyDefinitions)
-        , testCase "Traversing an FSM definition (exit handling)"
-           (runProcess localNode verifyStopBehaviour)
-        , testCase "Traversing an FSM definition (mailbox handling)"
-           (runProcess localNode verifyMailboxHandling)
-        , testCase "Traversing an FSM definition (nested definitions)"
-           (runProcess localNode verifyOuterStateHandler)
-        , testCase "Traversing an FSM definition (event re-publication)"
-           (runProcess localNode republicationOfEvents)
-        ]
+  return $
+    testGroup "FSM Processes"
+    [
+      testGroup "Language/DSL"
+      [
+        testCase "Traversing an FSM definition (operators)"
+        (runProcess localNode quirkyOperators)
+      , testCase "Traversing an FSM definition (functions)"
+        (runProcess localNode notSoQuirkyDefinitions)
+      , testCase "Traversing an FSM definition (exit handling)"
+        (runProcess localNode verifyStopBehaviour)
+      , testCase "Traversing an FSM definition (mailbox handling)"
+        (runProcess localNode verifyMailboxHandling)
+      , testCase "Traversing an FSM definition (nested definitions)"
+        (runProcess localNode verifyOuterStateHandler)
+      , testCase "Traversing an FSM definition (event re-publication)"
+        (runProcess localNode republicationOfEvents)
+      ]
     ]
+
+-- | Given a @builder@ function, make and run a test suite on a single transport
+testMain :: (NT.Transport -> IO TestTree) -> IO ()
+testMain builder = do
+  Right (transport, _) <- createTransportExposeInternals (defaultTCPAddr "127.0.0.1" "0") defaultTCPParameters
+  testData <- builder transport
+  defaultMain testData
 
 main :: IO ()
 main = testMain $ tests
-
--- | Given a @builder@ function, make and run a test suite on a single transport
-testMain :: (NT.Transport -> IO [Test]) -> IO ()
-testMain builder = do
-  Right (transport, _) <- createTransportExposeInternals
-                                    "127.0.0.1" "0" ("127.0.0.1",) defaultTCPParameters
-  testData <- builder transport
-  defaultMain testData
