@@ -8,6 +8,7 @@
 {-# LANGUAGE MultiParamTypeClasses      #-}
 {-# LANGUAGE GADTs                      #-}
 {-# LANGUAGE RankNTypes                 #-}
+{-# OPTIONS_GHC -Wno-redundant-constraints -Wno-deprecations -Wno-incomplete-uni-patterns  #-}
 -----------------------------------------------------------------------------
 -- |
 -- Module      :  Control.Distributed.Process.FSM.Internal.Types
@@ -93,7 +94,7 @@ import Data.Sequence
  )
 import qualified Data.Sequence as Q (null)
 import Data.Typeable (Typeable, typeOf)
-import Data.Tuple (swap, uncurry)
+import Data.Tuple (swap)
 import GHC.Generics
 
 -- | The internal state of an FSM process.
@@ -312,7 +313,7 @@ apply st msg step
                          setProcessState s'
       -- (_, st') <- runFSM st (addTransition ev)
       return $ enqueue st (Just ev)
-  | otherwise = error $ baseErr ++ ".Internal.Types.apply:InvalidStep"
+  -- | otherwise = error $ baseErr ++ ".Internal.Types.apply:InvalidStep"
   where
     mstash = return . uncurry enqueue . swap
     stash (o, s) = return $ enqueue s (Just o)

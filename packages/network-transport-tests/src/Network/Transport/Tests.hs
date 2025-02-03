@@ -532,8 +532,8 @@ testConnectToSelf transport numPings = do
 
     -- Check that the addr supplied also connects to self.
     -- The other thread verifies this.
-    Right conn <- connect endpoint addr ReliableOrdered defaultConnectHints
-    close conn
+    Right conn' <- connect endpoint addr ReliableOrdered defaultConnectHints
+    close conn'
 
     tlog "Done"
     putMVar done ()
@@ -671,13 +671,13 @@ testCloseEndPoint transport _ = do
       close conn
       Received cid' ["ping"] <- receive endpoint ; True <- return $ cid == cid'
 
-      Right conn <- connect endpoint theirAddr ReliableOrdered defaultConnectHints
-      send conn ["pong"]
+      Right conn' <- connect endpoint theirAddr ReliableOrdered defaultConnectHints
+      send conn' ["pong"]
 
       ConnectionClosed cid'' <- receive endpoint ; True <- return $ cid == cid''
       ErrorEvent (TransportError (EventConnectionLost addr') _) <- receive endpoint ; True <- return $ addr' == theirAddr
 
-      Left (TransportError SendFailed _) <- send conn ["pong2"]
+      Left (TransportError SendFailed _) <- send conn' ["pong2"]
 
       return ()
 
