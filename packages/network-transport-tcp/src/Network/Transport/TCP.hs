@@ -1342,12 +1342,12 @@ handleIncomingMessages params (ourEndPoint, theirEndPoint) =
                 forM_ (remoteProbing vst) id
                 removeRemoteEndPoint (ourEndPoint, theirEndPoint)
                 -- Attempt to reply (but don't insist)
-                act <- schedule theirEndPoint $ do
+                act' <- schedule theirEndPoint $ do
                   void $ tryIO $ sendOn vst'
                     [ encodeWord32 (encodeControlHeader CloseSocket)
                     , encodeWord32 (vst ^. remoteLastIncoming)
                     ]
-                return (RemoteEndPointClosed, Just act)
+                return (RemoteEndPointClosed, Just act')
           RemoteEndPointClosing resolved vst ->  do
             -- Like above, we need to check if there is a ConnectionCreated
             -- message that we sent but that the remote endpoint has not yet
@@ -1373,9 +1373,9 @@ handleIncomingMessages params (ourEndPoint, theirEndPoint) =
                 removeRemoteEndPoint (ourEndPoint, theirEndPoint)
                 -- Nothing to do, but we want to indicate that the socket
                 -- really did close.
-                act <- schedule theirEndPoint $ return ()
+                act' <- schedule theirEndPoint $ return ()
                 putMVar resolved ()
-                return (RemoteEndPointClosed, Just act)
+                return (RemoteEndPointClosed, Just act')
           RemoteEndPointFailed err ->
             throwIO err
           RemoteEndPointClosed ->
@@ -1446,8 +1446,8 @@ handleIncomingMessages params (ourEndPoint, theirEndPoint) =
               LocalEndPointClosed -> return st'
               LocalEndPointValid _ -> do
                 let code = EventConnectionLost (remoteAddress theirEndPoint)
-                    err  = TransportError code (show err')
-                qdiscEnqueue' ourQueue theirAddr (ErrorEvent err)
+                    err''  = TransportError code (show err')
+                qdiscEnqueue' ourQueue theirAddr (ErrorEvent err'')
                 return st'
             return (RemoteEndPointFailed err')
 

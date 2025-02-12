@@ -1,4 +1,4 @@
-
+module Main (main) where
 
 import Control.Concurrent (forkIO, threadDelay)
 import qualified Control.Concurrent.MVar as MVar
